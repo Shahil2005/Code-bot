@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FitBuddy — Gemini-powered chatbot</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header>
+        <h1>FitBuddy</h1>
+        <p>Your Gemini-powered fitness assistant</p>
+      </header>
+
+      <main id="chat">
+        <div id="messages"></div>
+      </main>
+
+      <form id="chat-form">
+        <input id="message-input" autocomplete="off" placeholder="Ask me about workouts, diet, or motivation..." />
+        <button type="submit">Send</button>
+      </form>
+
+      <footer>
+        <small>Don't put the Gemini API key in client-side code. This demo sends requests to your server which calls Gemini.</small>
+      </footer>
+    </div>
+
+    <script>
+      const messagesDiv = document.getElementById('messages');
+      const form = document.getElementById('chat-form');
+      const input = document.getElementById('message-input');
+
+      function addMessage(text, who = 'bot') {
+        const div = document.createElement('div');
+        div.className = 'message ' + who;
+        div.innerText = text;
+        messagesDiv.appendChild(div);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+      }
+
+      // greeting
+      addMessage("Hi — I'm FitBuddy. Ask me for a workout plan, diet tips, or motivation!", 'bot');
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const text = input.value.trim();
+        if (!text) return;
+        addMessage(text, 'user');
+        input.value = '';
+
+        addMessage('...', 'bot');
+        const lastBot = Array.from(messagesDiv.querySelectorAll('.message.bot')).pop();
+
+        try {
+          const resp = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: text })
+          });
+          const data = await resp.json();
+          if (data.reply) {
+            lastBot.innerText = data.reply;
+          } else if (data.error) {
+            lastBot.innerText = 'Error: ' + data.error;
+          } else {
+            lastBot.innerText = 'No response.';
+          }
+        } catch (err) {
+          console.error(err);
+          lastBot.innerText = 'Network error';
+        }
+      });
+    </script>
+  </body>
+</html>

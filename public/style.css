@@ -1,0 +1,287 @@
+/* public/style.css
+   Modern animated styling for FitBuddy chatbot
+   Paste/overwrite your existing style.css with this file.
+*/
+
+/* ---------- variables & reset ---------- */
+:root{
+  --bg-1: #071024;
+  --bg-2: #08162a;
+  --card: rgba(255,255,255,0.04);
+  --glass: rgba(255,255,255,0.06);
+  --muted: #9fb0c8;
+  --accent-a: #06b6d4;
+  --accent-b: #7c5cff;
+  --accent-c: #06d6a0;
+  --user-bg: linear-gradient(90deg,var(--accent-a),#0ea5a9 60%);
+  --bot-bg: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.02));
+  --glass-border: rgba(255,255,255,0.06);
+  --shadow: 0 8px 30px rgba(2,6,23,0.6);
+  --radius: 14px;
+  --max-width: 480px;
+  --ui-gap: 12px;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", "Segoe UI Mono", monospace;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html,body,#root{height:100%}
+body{
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  background: radial-gradient(1200px 600px at 10% 10%, rgba(124,92,255,0.10), transparent 6%),
+              radial-gradient(900px 500px at 90% 90%, rgba(6,182,212,0.06), transparent 8%),
+              linear-gradient(180deg,var(--bg-1),var(--bg-2));
+  color: #e7f2fb;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:28px;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  overflow:hidden;
+}
+
+/* subtle animated background sheen */
+@keyframes sheen {
+  0% { transform: translateX(-30%) rotate(6deg); opacity:0.06; }
+  50% { transform: translateX(30%) rotate(6deg); opacity:0.12; }
+  100% { transform: translateX(-30%) rotate(6deg); opacity:0.06; }
+}
+
+/* ---------- app container ---------- */
+.app{
+  width: min(var(--max-width), 96%);
+  height: 84vh;
+  max-height: 920px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+  border-radius: calc(var(--radius) + 6px);
+  box-shadow: var(--shadow);
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+  position:relative;
+  border: 1px solid rgba(255,255,255,0.03);
+}
+
+/* moving sheen layer */
+.app::before{
+  content:"";
+  position:absolute;
+  inset:-40%;
+  background: linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.0), rgba(255,255,255,0.02));
+  transform: rotate(6deg);
+  animation: sheen 12s ease-in-out infinite;
+  pointer-events:none;
+}
+
+/* ---------- header ---------- */
+header{
+  padding:18px 20px;
+  display:flex;
+  align-items:center;
+  gap:14px;
+  border-bottom:1px solid rgba(255,255,255,0.03);
+  background: linear-gradient(180deg, rgba(255,255,255,0.012), transparent);
+}
+
+/* brand circle with animated gradient */
+.brand {
+  width:56px;
+  height:56px;
+  border-radius:12px;
+  display:grid;
+  place-items:center;
+  background: conic-gradient(from 180deg at 50% 50%, var(--accent-a), var(--accent-b), var(--accent-c));
+  box-shadow: 0 6px 18px rgba(124,92,255,0.12), inset 0 -6px 18px rgba(0,0,0,0.12);
+  transform-origin:center;
+  animation: floaty 6s ease-in-out infinite;
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+.brand svg { width:34px; height:34px; filter: drop-shadow(0 6px 10px rgba(0,0,0,0.25)); }
+
+/* floaty */
+@keyframes floaty {
+  0% { transform: translateY(0) rotate(-2deg); }
+  50%{ transform: translateY(-6px) rotate(2deg); }
+  100%{ transform: translateY(0) rotate(-2deg); }
+}
+
+header h1{font-size:18px;letter-spacing:0.2px;margin:0}
+header p{margin:0;color:var(--muted);font-size:13px}
+
+/* ---------- chat area ---------- */
+main#chat{
+  flex:1;
+  padding:18px;
+  overflow:auto;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  position:relative;
+  background:
+    radial-gradient(500px 200px at 10% 50%, rgba(124,92,255,0.02), transparent 6%),
+    transparent;
+}
+
+/* messages wrapper */
+#messages{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  padding-bottom:8px;
+}
+
+/* common bubble styles */
+.message{
+  max-width:86%;
+  padding:12px 14px;
+  border-radius:14px;
+  line-height:1.45;
+  word-break:break-word;
+  box-shadow: 0 6px 18px rgba(2,6,23,0.45);
+  transform-origin: center;
+  opacity:0;
+  transform: translateY(8px) scale(0.995);
+  animation: bubbleIn 320ms cubic-bezier(.2,.9,.3,1) forwards;
+}
+
+/* entrance animation */
+@keyframes bubbleIn {
+  to { opacity:1; transform:none; }
+}
+
+/* bot bubble */
+.message.bot{
+  align-self:flex-start;
+  background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.02));
+  border: 1px solid rgba(255,255,255,0.03);
+  color:#e6eef7;
+  box-shadow: 0 8px 30px rgba(2,6,23,0.55);
+}
+
+/* user bubble */
+.message.user{
+  align-self:flex-end;
+  background: var(--user-bg);
+  color:#022;
+  font-weight:600;
+  border-bottom-right-radius:6px;
+  border-bottom-left-radius:14px;
+  border-top-left-radius:14px;
+  border-top-right-radius:14px;
+  filter: saturate(1.05);
+  transition: transform 180ms ease, box-shadow 180ms;
+}
+.message.user:hover{ transform: translateY(-4px); box-shadow: 0 18px 40px rgba(2,6,23,0.55); }
+
+/* subtle timestamp or source badge (if used) */
+.msg-meta{
+  font-size:11px;color:var(--muted);margin-top:6px;opacity:0.9;
+}
+
+/* typing indicator bubble (animated dots) */
+.typing {
+  display:inline-flex;
+  gap:6px;
+  align-items:center;
+}
+.dot{
+  width:8px;height:8px;border-radius:999px;background:linear-gradient(180deg,#fff,#e6f9ff);
+  opacity:0.85; transform: translateY(0);
+  animation: bounce 1000ms infinite ease-in-out;
+}
+.dot:nth-child(2){ animation-delay:120ms }
+.dot:nth-child(3){ animation-delay:240ms }
+
+@keyframes bounce {
+  0% { transform: translateY(0); opacity:0.45; }
+  40%{ transform: translateY(-6px); opacity:1; }
+  80%{ transform: translateY(0); opacity:0.65; }
+}
+
+/* ---------- input area ---------- */
+form#chat-form{
+  display:flex;
+  gap:10px;
+  padding:14px;
+  align-items:center;
+  border-top: 1px solid rgba(255,255,255,0.03);
+  background: linear-gradient(180deg, rgba(0,0,0,0.02), transparent);
+}
+
+/* input field */
+#message-input{
+  flex:1;
+  padding:12px 14px;
+  border-radius:12px;
+  border:1px solid var(--glass-border);
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+  color:inherit;
+  outline:none;
+  transition: box-shadow .18s, transform .12s, border-color .12s;
+  font-size:15px;
+  box-shadow: inset 0 -6px 20px rgba(0,0,0,0.25);
+}
+#message-input::placeholder{ color:var(--muted); opacity:0.9; font-size:14px; }
+
+/* focus ring */
+#message-input:focus{
+  box-shadow: 0 6px 30px rgba(6,182,212,0.08), 0 0 0 4px rgba(6,182,212,0.06);
+  border-color: rgba(6,182,212,0.65);
+  transform: translateY(-1px);
+}
+
+/* send button */
+button{
+  display:inline-grid;
+  place-items:center;
+  min-width:64px;
+  padding:10px 14px;
+  border-radius:12px;
+  border:none;
+  font-weight:700;
+  letter-spacing:0.3px;
+  cursor:pointer;
+  background: linear-gradient(90deg,var(--accent-a), var(--accent-b));
+  color:#041018;
+  box-shadow: 0 10px 30px rgba(12,32,56,0.35), inset 0 -6px 16px rgba(255,255,255,0.06);
+  transition: transform .12s ease, box-shadow .12s;
+}
+button:hover{ transform: translateY(-4px); box-shadow: 0 18px 40px rgba(12,32,56,0.45); }
+button:active{ transform: translateY(-1px) scale(.995) }
+
+/* footer */
+footer{ padding:8px 14px; font-size:12px; color:var(--muted); text-align:center; border-top: 1px solid rgba(255,255,255,0.02); }
+
+/* small utility: subtle divider */
+.hr{
+  height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.02),transparent);margin:10px 0;border-radius:2px;
+}
+
+/* ---------- responsive ---------- */
+@media (max-width:520px){
+  body{ padding:12px }
+  .app{ height:100vh; border-radius:0; max-height:100vh; }
+  header{ padding:12px }
+  .brand{ width:48px; height:48px }
+  header h1{ font-size:16px }
+  #message-input{ font-size:14px }
+}
+
+/* ---------- optional: message highlight for quick tips ---------- */
+.tip {
+  position:relative;
+  overflow:visible;
+}
+.tip::after{
+  content:'';
+  position:absolute;
+  inset:auto -26% -20% auto;
+  width:120px;height:120px; border-radius:22px;
+  background: radial-gradient(circle at 20% 30%, rgba(124,92,255,0.08), transparent 15%),
+              radial-gradient(circle at 80% 70%, rgba(6,182,212,0.06), transparent 12%);
+  filter: blur(12px);
+  z-index:-1;
+  opacity:0.9;
+  transform: translateY(2px);
+}
