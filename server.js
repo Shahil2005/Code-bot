@@ -26,6 +26,8 @@ async function callGemini(promptText) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
 
   // Build a simple "contents" request with a single user part
+  // allow callers to specify generation config via environment defaults
+  const defaultMax = process.env.GEMINI_MAX_OUTPUT_TOKENS ? parseInt(process.env.GEMINI_MAX_OUTPUT_TOKENS, 10) : 512;
   const body = {
     contents: [
       {
@@ -35,10 +37,11 @@ async function callGemini(promptText) {
         ]
       }
     ],
-    // Optional generation config; keep minimal for now
+    // Optional generation config; set sensible defaults and allow overriding
     generationConfig: {
-      // response modalities, length hints, temperature, etc. (optional)
-      // For example: "maxOutputTokens": 512
+      maxOutputTokens: defaultMax,
+      temperature: 0.2,
+      // You can add other options here: topK, topP, repetitionPenalty, etc.
     }
   };
 
@@ -73,6 +76,65 @@ async function callGemini(promptText) {
   // fallback: return a stringified version of the response if the above path doesn't exist
   return JSON.stringify(data);
 }
+
+// Stream-aware explain endpoint: streams the explanation as text chunks to the client
+app.post('/api/explain/stream', async (req, res) => {
+  try {
+    const { code, mode = 'summary', language = 'auto' } = req.body || {};
+    if (!code) return res.status(400).json({ error: 'No code provided' });
+
+    if (!GEMINI_API_KEY) return res.status(400).json({ error: 'GEMINI_API_KEY is not set in server environment' });
+
+    // Prepare prompt
+    const prompt = `You are a helpful code explainer. The user requested mode=${mode} and language=${language}. Provide a clear ${mode} of the code below.\n\nCode:\n${code}`;
+
+    // Set headers for streaming text response
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    // Call Gemini (non-streaming) to get full text, then stream it in chunks to the client.
+    // NOTE: If Gemini streaming is available for your account, replace this with a true streaming call.
+    let explanation;
+    try {
+      explanation = await callGemini(prompt);
+    } catch (err) {
+      console.error('Gemini explain failed:', err);
+      res.status(502).write('Error: Gemini API failed\n');
+      return res.end();
+    }
+
+    // Split the explanation into reasonable chunks (by sentence or 240 chars)
+    const maxChunk = 240;
+    const chunks = [];
+    if (!explanation) explanation = '';
+    // try to split by sentences first
+    const sentences = explanation.split(/(?<=[.?!])\s+/);
+    let buf = '';
+    for (const s of sentences) {
+      if ((buf + ' ' + s).length > maxChunk) {
+        if (buf) { chunks.push(buf.trim()); buf = s; }
+        else { chunks.push(s.trim()); buf = ''; }
+      } else {
+        buf = buf ? (buf + ' ' + s) : s;
+      }
+    }
+    if (buf) chunks.push(buf.trim());
+
+    // Stream chunks to client
+    for (const c of chunks) {
+      // Each chunk is sent as a line; client will append as it arrives
+      res.write(c + '\n');
+      // slight delay could be added for demo: await new Promise(r => setTimeout(r, 30));
+    }
+
+    // end stream
+    res.end();
+  } catch (err) {
+    console.error(err);
+    res.status(500).end('Server error');
+  }
+});
 
 // Keep a lightweight rule-based fallback for fitness-specific prompts (optional)
 // We will prefer Gemini if API key present; otherwise fallback to local rules.
@@ -118,6 +180,79 @@ app.post('/api/chat', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/explain
+// Expects JSON: { code: string, model?: string, mode?: 'summary'|'line'|'refactor'|'doc', language?: string }
+app.post('/api/explain', async (req, res) => {
+  try {
+    const { code, model = 'gpt-4-mini', mode = 'summary', language = 'auto' } = req.body || {};
+    if (!code) return res.status(400).json({ error: 'No code provided' });
+
+    // Always use Gemini for explanations. Require GEMINI_API_KEY to be configured.
+    if (!GEMINI_API_KEY) {
+      return res.status(400).json({ error: 'Server is configured to use Gemini for explanations but GEMINI_API_KEY is not set. Please add GEMINI_API_KEY to your .env.' });
+    }
+
+    const prompt = `You are a helpful code explainer. The user requested mode=${mode} and language=${language}. Provide a clear ${mode} of the code below.\n\nCode:\n${code}`;
+    try {
+      const explanation = await callGemini(prompt);
+      return res.json({ explanation, source: 'gemini' });
+    } catch (err) {
+      console.error('Gemini explain failed:', err);
+      return res.status(502).json({ error: 'Gemini API error', detail: String(err) });
+    }
+
+    // Local heuristic fallback explanation (unreachable because we require Gemini above)
+    function naiveExplain(codeStr, mode) {
+      const lines = codeStr.split(/\r?\n/).map(l => l.replace(/\t/g, '  '));
+      if (mode === 'summary') {
+        // build a tiny summary by looking for keywords
+        const joined = codeStr.toLowerCase();
+        if (/print\(/.test(joined)) return 'This snippet prints output to the console.';
+        if (/def\s+\w+\(/.test(joined)) return 'This snippet defines one or more functions.';
+        if (/class\s+\w+/.test(joined)) return 'This snippet defines a class.';
+        if (/import\s+/.test(joined)) return 'This snippet imports external modules.';
+        return 'Small code snippet — general purpose. Try "Line-by-line" mode for more detail.';
+      }
+
+      if (mode === 'doc') {
+        // Produce a simple docstring-style description
+        return 'Description:\n' + (lines.slice(0, 6).map((l, i) => `L${i+1}: ${l.trim()}`).join('\n')) + '\n\n(Use a real LLM for fuller documentation.)';
+      }
+
+      if (mode === 'refactor') {
+        return 'Refactor suggestion:\n- Consider smaller functions, clearer variable names, and adding comments.\n- Run a linter or formatter (e.g., Prettier/Black) to normalize style.';
+      }
+
+      // default: line-by-line
+      const out = [];
+      for (let i = 0; i < lines.length; i++) {
+        const raw = lines[i];
+        const t = raw.trim();
+        if (!t) continue;
+        let explanation = '';
+        if (/^\s*#/.test(raw) || /^\/\//.test(raw)) explanation = 'Comment: ' + t.replace(/^#|^\/\//, '').trim();
+        else if (/^\s*console\.log\(/.test(t) || /^\s*print\(/.test(t)) explanation = 'Prints a value to the console.';
+        else if (/^\s*return\b/.test(t)) explanation = 'Returns a value from the current function.';
+        else if (/^\s*def\s+\w+\s*\(/.test(t) || /^\s*function\s+\w+/.test(t)) explanation = 'Defines a function.';
+        else if (/^\s*class\s+\w+/.test(t)) explanation = 'Defines a class/type.';
+        else if (/^\s*for\s+/.test(t) || /^\s*while\s+/.test(t)) explanation = 'Loop: iterates over items or condition.';
+        else if (/^\s*if\s+/.test(t) || /^\s*else\b/.test(t)) explanation = 'Conditional branch.';
+        else if (/^\s*import\b/.test(t) || /^\s*from\b/.test(t)) explanation = 'Imports external module(s).' ;
+        else explanation = 'Executes: ' + t;
+
+        out.push(`Line ${i+1}: ${t}\n  → ${explanation}`);
+      }
+      return out.join('\n\n');
+    }
+
+    const explanation = naiveExplain(code, mode);
+    return res.json({ explanation, source: 'local-fallback' });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
   }
 });
 

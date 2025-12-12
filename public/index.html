@@ -3,73 +3,188 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>FitBuddy — Gemini-powered chatbot</title>
+    <title>Code Explainer — LLM Playground</title>
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
-    <div class="app">
+    <div class="app code-explainer">
       <header>
-        <h1>FitBuddy</h1>
-        <p>Your Gemini-powered fitness assistant</p>
+        <div class="brand">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+            <path d="M3 12h18" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>
+            <path d="M6 7h12" stroke="#fff" stroke-width="1.6" stroke-linecap="round" opacity="0.9"/>
+            <path d="M6 17h12" stroke="#fff" stroke-width="1.6" stroke-linecap="round" opacity="0.9"/>
+          </svg>
+        </div>
+        <div class="hdr-text">
+          <h1>Code Explainer</h1>
+          <p>Paste code, choose a model, and get plain-language explanations, line-by-line breakdowns, or refactors.</p>
+        </div>
       </header>
 
-      <main id="chat">
-        <div id="messages"></div>
+      <main class="container">
+        <section class="controls">
+          <label class="field">
+            <span>Model</span>
+            <select id="model-select">
+              <option value="claude-haiku-4.5">Claude Haiku 4.5 (recommended)</option>
+              <option value="gpt-4o">GPT-4o</option>
+              <option value="gpt-4-mini">GPT-4 Mini</option>
+              <option value="local-llm">Local LLM</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Language</span>
+            <select id="lang-select">
+              <option>auto-detect</option>
+              <option>javascript</option>
+              <option>python</option>
+              <option>java</option>
+              <option>c++</option>
+              <option>html</option>
+            </select>
+          </label>
+
+          <label class="field stretch">
+            <span>Explain Mode</span>
+            <select id="mode-select">
+              <option value="summary">High-level summary</option>
+              <option value="line">Line-by-line explanation</option>
+              <option value="refactor">Refactor / optimize</option>
+              <option value="doc">Generate docs & comments</option>
+            </select>
+          </label>
+        </section>
+
+        <section class="editor">
+          <textarea id="code-input" placeholder="Paste code here (max ~2000 tokens)."></textarea>
+
+          <div class="editor-actions">
+            <button id="explain-btn" class="primary">Explain</button>
+            <button id="clear-btn" class="muted">Clear</button>
+            <div id="status" class="status">Ready</div>
+          </div>
+        </section>
+
+        <section class="output">
+          <div class="out-header">
+            <h2>Explanation</h2>
+            <div class="out-actions">
+              <button id="copy-btn">Copy</button>
+              <button id="download-btn">Download</button>
+            </div>
+          </div>
+          <pre id="explain-output" class="explain-output">The explanation will appear here.</pre>
+        </section>
+
+        <footer class="small-note">Note: This UI sends requests to your server endpoint <code>/api/explain</code>. This app uses Google Gemini on the server — set <code>GEMINI_API_KEY</code> in your `.env` for the endpoint to work.</footer>
       </main>
-
-      <form id="chat-form">
-        <input id="message-input" autocomplete="off" placeholder="Ask me about workouts, diet, or motivation..." />
-        <button type="submit">Send</button>
-      </form>
-
-      <footer>
-        <small>Don't put the Gemini API key in client-side code. This demo sends requests to your server which calls Gemini.</small>
-      </footer>
     </div>
 
     <script>
-      const messagesDiv = document.getElementById('messages');
-      const form = document.getElementById('chat-form');
-      const input = document.getElementById('message-input');
+      // Basic client interactions for the Code Explainer UI
+      const codeInput = document.getElementById('code-input');
+      const explainBtn = document.getElementById('explain-btn');
+      const clearBtn = document.getElementById('clear-btn');
+      const output = document.getElementById('explain-output');
+      const modelSelect = document.getElementById('model-select');
+      const modeSelect = document.getElementById('mode-select');
+      const langSelect = document.getElementById('lang-select');
+      const status = document.getElementById('status');
+      const copyBtn = document.getElementById('copy-btn');
+      const downloadBtn = document.getElementById('download-btn');
 
-      function addMessage(text, who = 'bot') {
-        const div = document.createElement('div');
-        div.className = 'message ' + who;
-        div.innerText = text;
-        messagesDiv.appendChild(div);
-        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+      function setStatus(txt, busy = false){
+        status.textContent = txt;
+        explainBtn.disabled = busy;
+        if(busy) status.classList.add('busy'); else status.classList.remove('busy');
       }
 
-      // greeting
-      addMessage("Hi — I'm FitBuddy. Ask me for a workout plan, diet tips, or motivation!", 'bot');
+      clearBtn.addEventListener('click', () => {
+        codeInput.value = '';
+        output.textContent = 'The explanation will appear here.';
+        setStatus('Ready', false);
+      });
 
-      form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const text = input.value.trim();
-        if (!text) return;
-        addMessage(text, 'user');
-        input.value = '';
+      copyBtn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(output.textContent);
+          setStatus('Copied');
+          setTimeout(()=>setStatus('Ready'),1200);
+        } catch (e) {
+          setStatus('Copy failed');
+        }
+      });
 
-        addMessage('...', 'bot');
-        const lastBot = Array.from(messagesDiv.querySelectorAll('.message.bot')).pop();
+      downloadBtn.addEventListener('click', () => {
+        const blob = new Blob([output.textContent], {type:'text/plain'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'explanation.txt';
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(url);
+      });
+
+      explainBtn.addEventListener('click', async () => {
+        const code = codeInput.value.trim();
+        if(!code){ setStatus('Paste some code first'); return; }
+
+        const payload = {
+          code,
+          model: modelSelect.value,
+          mode: modeSelect.value,
+          language: langSelect.value
+        };
+
+        setStatus('Thinking…', true);
+        output.textContent = '';
 
         try {
-          const resp = await fetch('/api/chat', {
+          const resp = await fetch('/api/explain/stream', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: text })
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify(payload)
           });
-          const data = await resp.json();
-          if (data.reply) {
-            lastBot.innerText = data.reply;
-          } else if (data.error) {
-            lastBot.innerText = 'Error: ' + data.error;
-          } else {
-            lastBot.innerText = 'No response.';
+
+          if (!resp.ok) {
+            const txt = await resp.text();
+            output.textContent = `Server error: ${resp.status} ${txt}`;
+            setStatus('Error');
+            return;
           }
+
+          // Stream the response body as it arrives
+          const reader = resp.body.getReader();
+          const decoder = new TextDecoder('utf-8');
+          let done = false;
+          let partial = '';
+          while (!done) {
+            const { value, done: streamDone } = await reader.read();
+            if (value) {
+              const chunk = decoder.decode(value, { stream: true });
+              // append chunk to output
+              partial += chunk;
+              output.textContent = partial;
+              // auto-scroll if desired
+            }
+            done = streamDone;
+          }
+
+          setStatus('Done');
         } catch (err) {
           console.error(err);
-          lastBot.innerText = 'Network error';
+          output.textContent = 'Network error: ' + (err.message||err);
+          setStatus('Network error');
+        } finally {
+          setTimeout(()=>setStatus('Ready', false), 900);
+        }
+      });
+
+      // keyboard shortcut: Ctrl+Enter to explain
+      codeInput.addEventListener('keydown', (e) => {
+        if((e.ctrlKey||e.metaKey) && e.key === 'Enter'){
+          explainBtn.click();
         }
       });
     </script>
